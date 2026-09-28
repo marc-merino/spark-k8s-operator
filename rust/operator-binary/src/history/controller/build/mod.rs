@@ -211,10 +211,78 @@ pub(crate) mod test_support {
                 replicas: 1
         "#};
 
+    #[rstest::rstest]
+    #[case("3.5.8")]
+    #[case("4.1.1")]
+    #[case("4.1.2")]
+    fn history_jmx_config_is_mounted(#[case] version: &str) {
+        let resources = super::build(&minimal_validated_cluster_for_version(version)).unwrap();
+        let config_map = &resources.config_maps[0];
+        assert_eq!(
+            config_map.data.as_ref().unwrap()["jmx-exporter.yaml"],
+            include_str!("../../config/jmx-exporter.yaml")
+        );
+        let pod = resources.stateful_sets[0]
+            .spec
+            .as_ref()
+            .unwrap()
+            .template
+            .spec
+            .as_ref()
+            .unwrap();
+        let container = pod
+            .containers
+            .iter()
+            .find(|c| c.name == "spark-history")
+            .unwrap();
+        let opts = container
+            .env
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|env| env.name == "SPARK_HISTORY_OPTS")
+            .unwrap()
+            .value
+            .as_ref()
+            .unwrap();
+        let agent = opts
+            .split_whitespace()
+            .find(|arg| arg.starts_with("-javaagent:"))
+            .unwrap();
+        assert_eq!(
+            agent,
+            "-javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar=18081:/stackable/spark/conf/jmx-exporter.yaml"
+        );
+        let path = agent.split_once("=18081:").unwrap().1;
+        let mount = container
+            .volume_mounts
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|mount| path == format!("{}/jmx-exporter.yaml", mount.mount_path))
+            .unwrap();
+        let volume = pod
+            .volumes
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|v| v.name == mount.name)
+            .unwrap();
+        let source = volume.config_map.as_ref().unwrap();
+        assert_eq!(Some(&source.name), config_map.metadata.name.as_ref());
+        assert!(source.items.is_none(), "all ConfigMap keys must be mounted");
+        assert!(mount.sub_path.is_none());
+    }
+
     /// Runs the real validate step against the minimal fixture.
     pub fn minimal_validated_cluster() -> ValidatedSparkHistoryServer {
-        let shs: v1alpha1::SparkHistoryServer = yaml_from_str_singleton_map(HISTORY_YAML)
-            .expect("invalid test SparkHistoryServer YAML");
+        minimal_validated_cluster_for_version("3.5.8")
+    }
+
+    fn minimal_validated_cluster_for_version(version: &str) -> ValidatedSparkHistoryServer {
+        let shs: v1alpha1::SparkHistoryServer =
+            yaml_from_str_singleton_map(&HISTORY_YAML.replace("3.5.8", version))
+                .expect("invalid test SparkHistoryServer YAML");
         validate(
             &shs,
             DereferencedSparkHistoryServer {

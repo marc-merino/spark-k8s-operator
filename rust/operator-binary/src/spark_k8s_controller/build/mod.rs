@@ -230,7 +230,7 @@ mod tests {
 
     /// The Pod specs of the submit Job and of the driver and executor pod templates, each with the
     /// name of the resource it was taken from.
-    fn pod_specs(enable_vector_agent: bool) -> Vec<(String, PodSpec)> {
+    fn pod_specs(enable_vector_agent: bool, version: &str) -> Vec<(String, PodSpec)> {
         let yaml = format!(
             indoc! {r#"
                 apiVersion: spark.stackable.tech/v1alpha1
@@ -243,7 +243,7 @@ mod tests {
                   mode: cluster
                   mainApplicationFile: test.py
                   sparkImage:
-                    productVersion: 1.2.3
+                    productVersion: {version}
                   image: oci.example.org/jobs/spark-example:1.0.0
                   vectorAggregatorConfigMapName: vector-aggregator-discovery
                   deps:
@@ -260,7 +260,8 @@ mod tests {
                       logging:
                         enableVectorAgent: {enable_vector_agent}
             "#},
-            enable_vector_agent = enable_vector_agent
+            enable_vector_agent = enable_vector_agent,
+            version = version,
         );
         let deserializer = serde_yaml::Deserializer::from_str(&yaml);
         let spark_application: v1alpha1::SparkApplication =
@@ -283,6 +284,32 @@ mod tests {
         .expect("the fixture validates");
 
         let resources = build(&validated).expect("the resources can be built");
+        // Both application roles use Spark's servlet, not the History Server JMX agent.
+        let submit = &resources.jobs[0]
+            .spec
+            .as_ref()
+            .unwrap()
+            .template
+            .spec
+            .as_ref()
+            .unwrap()
+            .containers[0];
+        let command = submit.args.as_ref().unwrap().join(" ");
+        assert!(command.contains("org.apache.spark.metrics.sink.PrometheusServlet"));
+        assert!(command.contains("spark.ui.prometheus.enabled=true"));
+        for role in ["driver", "executor"] {
+            assert!(command.contains(&format!("spark.{role}.extraJavaOptions=")));
+        }
+        assert!(!command.contains("-javaagent:"));
+        for config_map in &resources.config_maps {
+            assert!(
+                !config_map
+                    .data
+                    .as_ref()
+                    .unwrap()
+                    .contains_key("jmx-exporter.yaml")
+            );
+        }
 
         let mut pod_specs = vec![(
             "spark-submit Job".to_string(),
@@ -322,10 +349,13 @@ mod tests {
         pod_specs
     }
 
-    #[test]
-    fn every_declared_volume_is_mounted() {
+    #[rstest::rstest]
+    #[case("3.5.8")]
+    #[case("4.1.1")]
+    #[case("4.1.2")]
+    fn every_declared_volume_is_mounted(#[case] version: &str) {
         for enable_vector_agent in [false, true] {
-            for (name, pod_spec) in pod_specs(enable_vector_agent) {
+            for (name, pod_spec) in pod_specs(enable_vector_agent, version) {
                 let PodSpec {
                     containers,
                     init_containers,
@@ -353,10 +383,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn spark_containers_mount_the_config_volume() {
+    #[rstest::rstest]
+    #[case("3.5.8")]
+    #[case("4.1.1")]
+    #[case("4.1.2")]
+    fn spark_containers_mount_the_config_volume(#[case] version: &str) {
         for enable_vector_agent in [false, true] {
-            for (name, pod_spec) in pod_specs(enable_vector_agent) {
+            for (name, pod_spec) in pod_specs(enable_vector_agent, version) {
                 let spark_container = pod_spec
                     .containers
                     .iter()

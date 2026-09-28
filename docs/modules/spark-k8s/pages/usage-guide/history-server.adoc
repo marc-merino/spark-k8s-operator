@@ -161,5 +161,7 @@ image::history-server-ui.png[History Server Console]
 
 The operator creates a Kubernetes service dedicated specifically to collect metrics for Spark History instances with Prometheus.
 These metrics are exported via the JMX exporter as the history server doesn't support the built in Spark prometheus servlet.
+The operator supplies `jmx-exporter.yaml` in each role-group ConfigMap and mounts it at `/stackable/spark/conf/jmx-exporter.yaml`; the exporter JAR remains in the Spark image.
+Application drivers and executors use Spark's built-in Prometheus servlet and do not load this JMX exporter configuration.
 The service name follows the convention `<stacklet name>-history-metrics`.
 Metrics can be scraped at the endpoint `<service name>:18081/metrics`.

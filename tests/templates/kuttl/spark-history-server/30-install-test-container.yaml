@@ -29,8 +29,12 @@ data:
             f"Expected HTTP return code 200 from the metrics endpoint but got [{response.status_code}]"
         )
 
-        assert "jmx_scrape_error" in response.text, (
-            "Expected metric [jmx_scrape_error] not found"
+        assert any(
+            line.split()[0] == "jmx_scrape_error" and float(line.split()[1]) == 0
+            for line in response.text.splitlines()
+            if line and not line.startswith("#")
+        ), (
+            "Expected a successful JMX scrape (jmx_scrape_error == 0)"
         )
 ---
 apiVersion: v1

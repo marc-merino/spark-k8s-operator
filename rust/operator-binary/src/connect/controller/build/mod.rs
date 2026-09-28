@@ -278,6 +278,31 @@ mod tests {
 
     const PULL_POLICY_PROPERTY: &str = "spark.kubernetes.container.image.pullPolicy";
 
+    #[test]
+    fn connect_uses_native_metrics_without_a_jmx_agent() {
+        let resources = build(&test_support::minimal_validated_cluster(), &[]).unwrap();
+        assert_eq!(resources.config_maps.len(), 2);
+        for config_map in &resources.config_maps {
+            let data = config_map.data.as_ref().unwrap();
+            assert!(data["metrics.properties"].contains(
+                "*.sink.prometheusServlet.class=org.apache.spark.metrics.sink.PrometheusServlet"
+            ));
+            assert!(!data.contains_key("jmx-exporter.yaml"));
+            assert!(
+                !serde_json::to_string(config_map)
+                    .unwrap()
+                    .contains("-javaagent:")
+            );
+        }
+        for stateful_set in &resources.stateful_sets {
+            assert!(
+                !serde_json::to_string(stateful_set)
+                    .unwrap()
+                    .contains("-javaagent:")
+            );
+        }
+    }
+
     #[rstest]
     #[case::from_the_resolved_image(None, None, "Never")]
     #[case::server_config_override_wins(Some("Always"), None, "Always")]

@@ -20,9 +20,12 @@ use crate::{
         history::SparkHistoryServerContainer,
         to_spark_env_sh_string,
     },
-    history::controller::{
-        build::recommended_labels_for_role_group_resources,
-        validate::{self, ValidatedHistoryRoleGroup},
+    history::{
+        config::jvm::JMX_EXPORTER_CONFIG_FILE,
+        controller::{
+            build::recommended_labels_for_role_group_resources,
+            validate::{self, ValidatedHistoryRoleGroup},
+        },
     },
     product_logging::{self},
 };
@@ -99,6 +102,10 @@ pub(crate) fn build_config_map(
                     role_group_name,
                 ))
                 .build(),
+        )
+        .add_data(
+            JMX_EXPORTER_CONFIG_FILE,
+            include_str!("../../../config/jmx-exporter.yaml"),
         )
         .add_data(SPARK_DEFAULTS_FILE_NAME, spark_defaults)
         .add_data(

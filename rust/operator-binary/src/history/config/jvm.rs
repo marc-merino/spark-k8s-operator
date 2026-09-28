@@ -10,6 +10,8 @@ use crate::{
     history::controller::validate::HistoryRoleGroupConfig,
 };
 
+pub const JMX_EXPORTER_CONFIG_FILE: &str = "jmx-exporter.yaml";
+
 /// JVM arguments that go into `SPARK_HISTORY_OPTS`
 pub fn construct_history_jvm_args(rg: &HistoryRoleGroupConfig, logdir: &ResolvedLogDir) -> String {
     // Note (@sbernauer): As of 2025-03-04, we did not set any heap related JVM arguments, so I
@@ -21,7 +23,7 @@ pub fn construct_history_jvm_args(rg: &HistoryRoleGroupConfig, logdir: &Resolved
             "-Djava.security.properties={VOLUME_MOUNT_PATH_CONFIG}/{JVM_SECURITY_PROPERTIES_FILE}"
         ),
         format!(
-            "-javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar={METRICS_PORT}:/stackable/jmx/config.yaml"
+            "-javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar={METRICS_PORT}:{VOLUME_MOUNT_PATH_CONFIG}/{JMX_EXPORTER_CONFIG_FILE}"
         ),
     ];
 
@@ -56,8 +58,11 @@ mod tests {
         },
     };
 
-    #[test]
-    fn test_construct_jvm_arguments_defaults() {
+    #[rstest::rstest]
+    #[case("3.5.8")]
+    #[case("4.1.1")]
+    #[case("4.1.2")]
+    fn test_construct_jvm_arguments_defaults(#[case] version: &str) {
         let input = r#"
         apiVersion: spark.stackable.tech/v1alpha1
         kind: SparkHistoryServer
@@ -81,18 +86,21 @@ mod tests {
                   cleaner: true
         "#;
 
-        let jvm_config = construct_jvm_config_for_test(input);
+        let jvm_config = construct_jvm_config_for_test(&input.replace("3.5.8", version));
 
         assert_eq!(
             jvm_config,
             "-Dlog4j.configurationFile=/stackable/log_config/log4j2.properties \
             -Djava.security.properties=/stackable/spark/conf/security.properties \
-            -javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar=18081:/stackable/jmx/config.yaml"
+            -javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar=18081:/stackable/spark/conf/jmx-exporter.yaml"
         );
     }
 
-    #[test]
-    fn test_construct_jvm_argument_overrides() {
+    #[rstest::rstest]
+    #[case("3.5.8")]
+    #[case("4.1.1")]
+    #[case("4.1.2")]
+    fn test_construct_jvm_argument_overrides(#[case] version: &str) {
         let input = r#"
         apiVersion: spark.stackable.tech/v1alpha1
         kind: SparkHistoryServer
@@ -126,13 +134,13 @@ mod tests {
                   cleaner: true
         "#;
 
-        let jvm_config = construct_jvm_config_for_test(input);
+        let jvm_config = construct_jvm_config_for_test(&input.replace("3.5.8", version));
 
         assert_eq!(
             jvm_config,
             "-Dlog4j.configurationFile=/stackable/log_config/log4j2.properties \
             -Djava.security.properties=/stackable/spark/conf/security.properties \
-            -javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar=18081:/stackable/jmx/config.yaml \
+            -javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar=18081:/stackable/spark/conf/jmx-exporter.yaml \
             -Dhttps.proxyHost=proxy.my.corp \
             -Djava.net.preferIPv4Stack=true \
             -Dhttps.proxyPort=1234"

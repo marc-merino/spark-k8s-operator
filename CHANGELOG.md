@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Supply the Spark History Server JMX exporter configuration from the operator-managed role-group ConfigMap instead of the image ([stackabletech/issues#160](https://github.com/stackabletech/issues/issues/160)).
+
 - Bump `stackable-operator` to 0.118.0 ([#732], [#753], [#773]).
 - BREAKING: `spec.image.stackableVersion` must now be a full, valid semver version, e.g. `26.7.1`.
   Abbreviated values such as `26.7` are no longer accepted ([#773]).
